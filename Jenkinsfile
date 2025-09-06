@@ -2,13 +2,10 @@ pipeline {
   agent any
 
   options { timestamps() }
-  // Poll every 5 minutes to satisfy the “auto trigger without webhook” requirement
   triggers { pollSCM('H/5 * * * *') }
 
-  // Ensure Node 18 from Jenkins NodeJS plugin is on PATH
-  tools { nodejs 'Node_18' }
+  tools { nodejs 'Node 18' }
 
-  // Avoid config permission issues for tools like snyk
   environment {
     XDG_CONFIG_HOME = "${WORKSPACE}/.config"
   }
@@ -35,14 +32,12 @@ pipeline {
       }
       post {
         always {
-          // Keep it small first; add attachLog after you confirm email works
           retry(2) {
             emailext(
               to: 's221133429@gmail.com',
               from: 's221133429@gmail.com',
               subject: "[DevSecOps] Run Tests — ${currentBuild.currentResult} (${env.JOB_NAME} #${env.BUILD_NUMBER})",
               body: "test test — Run Tests finished.\nJob: ${env.JOB_NAME}\nBuild: #${env.BUILD_NUMBER}"
-              // attachLog: true, compressLog: true
             )
           }
         }
@@ -71,7 +66,6 @@ pipeline {
               subject: "[DevSecOps] NPM Audit — ${currentBuild.currentResult} (${env.JOB_NAME} #${env.BUILD_NUMBER})",
               body: "test test — NPM Audit finished. See attachment for details.",
               attachmentsPattern: 'npm-audit.txt'
-              // You can also add: attachLog: true, compressLog: true
             )
           }
         }
