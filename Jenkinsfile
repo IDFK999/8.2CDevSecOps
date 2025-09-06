@@ -1,9 +1,13 @@
 pipeline {
   agent any
 
+  tools { nodejs 'Node 18' }                  // Manage Jenkins → Tools → NodeJS installations
+
+  triggers { pollSCM('H/5 * * * *') }         // auto-run every ~5 minutes on new commits
+
   environment {
     NOTIFY = 's221133429@gmail.com'
-    // Get the NodeJS tool base dir; we’ll resolve the real bin at runtime
+    XDG_CONFIG_HOME = "${env.WORKSPACE}/.config" // avoid snyk EACCES during npm test
     NODEJS_HOME = "${tool 'Node 18'}"
   }
 
@@ -17,94 +21,54 @@ pipeline {
     stage('Install Dependencies') {
       steps {
         sh '''
-# Resolve the actual Node bin directory (handles nested node-v*/bin)
 BIN_DIR=""
-if [ -d "${NODEJS_HOME}/bin" ]; then
-  BIN_DIR="${NODEJS_HOME}/bin"
-else
-  BIN_DIR=$(ls -d "${NODEJS_HOME}"/node-v*/bin 2>/dev/null | head -n1)
-fi
-if [ -z "$BIN_DIR" ]; then
-  echo "Could not locate Node bin under ${NODEJS_HOME}" >&2
-  exit 1
-fi
-
+if [ -d "${NODEJS_HOME}/bin" ]; then BIN_DIR="${NODEJS_HOME}/bin"; else BIN_DIR=$(ls -d "${NODEJS_HOME}"/node-v*/bin 2>/dev/null | head -n1); fi
 export PATH="$BIN_DIR:$PATH"
-echo "Using BIN_DIR=$BIN_DIR"
-which node || true
-which npm || true
+mkdir -p "${XDG_CONFIG_HOME}"
 node -v && npm -v
-npm install
+npm ci --no-progress --loglevel=error || npm install --no-progress --loglevel=error
 '''
       }
     }
 
     stage('Run Tests') {
-      steps {
-        sh '''
-BIN_DIR=""
-if [ -d "${NODEJS_HOME}/bin" ]; then
-  BIN_DIR="${NODEJS_HOME}/bin"
-else
-  BIN_DIR=$(ls -d "${NODEJS_HOME}"/node-v*/bin 2>/dev/null | head -n1)
-fi
-export PATH="$BIN_DIR:$PATH"
-npm test || true
-'''
-      }
+      steps { sh 'npm test || true' }
       post {
         always {
-          emailext(
-            to: "${env.NOTIFY}",
-            subject: "[SIT223 DevSecOps] Run Tests — ${currentBuild.currentResult} (${env.JOB_NAME} #${env.BUILD_NUMBER})",
-            body: "test test — Run Tests stage notification.",
-            attachLog: true,
-            mimeType: "text/plain"
-          )
+          sleep(time: 5, unit: 'SECONDS')
+          retry(3) {
+            emailext(
+              to: "${env.NOTIFY}",
+              subject: "[SIT223 DevSecOps] ${env.STAGE_NAME} — ${currentBuild.currentResult} (${env.JOB_NAME} #${env.BUILD_NUMBER})",
+              body: "test test — ${env.STAGE_NAME} notification.",
+              attachLog: true, compressLog: true, mimeType: 'text/plain'
+            )
+          }
         }
       }
     }
 
     stage('Generate Coverage Report') {
       steps {
-        sh '''
-BIN_DIR=""
-if [ -d "${NODEJS_HOME}/bin" ]; then
-  BIN_DIR="${NODEJS_HOME}/bin"
-else
-  BIN_DIR=$(ls -d "${NODEJS_HOME}"/node-v*/bin 2>/dev/null | head -n1)
-fi
-export PATH="$BIN_DIR:$PATH"
-npm run coverage || true
-'''
+        sh 'echo "No coverage script in this project; skipping."'
       }
     }
 
     stage('NPM Audit (Security Scan)') {
-      steps {
-        sh '''
-BIN_DIR=""
-if [ -d "${NODEJS_HOME}/bin" ]; then
-  BIN_DIR="${NODEJS_HOME}/bin"
-else
-  BIN_DIR=$(ls -d "${NODEJS_HOME}"/node-v*/bin 2>/dev/null | head -n1)
-fi
-export PATH="$BIN_DIR:$PATH"
-npm audit || true
-'''
-      }
+      steps { sh 'npm audit || true' }
       post {
         always {
-          emailext(
-            to: "${env.NOTIFY}",
-            subject: "[SIT223 DevSecOps] NPM Audit — ${currentBuild.currentResult} (${env.JOB_NAME} #${env.BUILD_NUMBER})",
-            body: "test test — NPM Audit (security scan) stage notification.",
-            attachLog: true,
-            mimeType: "text/plain"
-          )
+          sleep(time: 5, unit: 'SECONDS')
+          retry(3) {
+            emailext(
+              to: "${env.NOTIFY}",
+              subject: "[SIT223 DevSecOps] ${env.STAGE_NAME} — ${currentBuild.currentResult} (${env.JOB_NAME} #${env.BUILD_NUMBER})",
+              body: "test test — ${env.STAGE_NAME} notification.",
+              attachLog: true, compressLog: true, mimeType: 'text/plain'
+            )
+          }
         }
       }
     }
   }
 }
-
