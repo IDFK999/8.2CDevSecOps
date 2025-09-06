@@ -1,13 +1,14 @@
 pipeline {
   agent any
-
   options { timestamps() }
+  // Poll SCM instead of webhook (meets Part 1 trigger requirement)
   triggers { pollSCM('H/5 * * * *') }
 
+  // Make sure your NodeJS tool in "Global Tool Configuration" is named exactly: Node 18
   tools { nodejs 'Node 18' }
 
   environment {
-    XDG_CONFIG_HOME = "${WORKSPACE}/.config"
+    EMAIL_TO = 's221133429@gmail.com'
   }
 
   stages {
@@ -19,55 +20,66 @@ pipeline {
 
     stage('Install Dependencies') {
       steps {
-        sh '''
-          mkdir -p "$XDG_CONFIG_HOME"
-          npm ci --no-progress --loglevel=error
-        '''
+        sh 'npm ci --no-progress --loglevel=error'
       }
     }
 
     stage('Run Tests') {
       steps {
+        // Succeeds even if tests (Snyk) fail/auth not set — matches brief
         sh 'npm test || true'
       }
       post {
         always {
-          retry(2) {
-            emailext(
-              to: 's221133429@gmail.com',
-              from: 's221133429@gmail.com',
-              subject: "[DevSecOps] Run Tests — ${currentBuild.currentResult} (${env.JOB_NAME} #${env.BUILD_NUMBER})",
-              body: "test test — Run Tests finished.\nJob: ${env.JOB_NAME}\nBuild: #${env.BUILD_NUMBER}"
-            )
-          }
+          emailext(
+            to: "${env.EMAIL_TO}",
+            subject: "[Tests] ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
+            body: """Build: ${env.BUILD_URL}
+Stage: Run Tests
+Status: ${currentBuild.currentResult}
+
+Console log attached.""",
+            attachLog: true,
+            compressLog: true
+          )
         }
       }
     }
 
     stage('Generate Coverage Report') {
       steps {
-        sh 'echo "No coverage script in this project; skipping."'
+        sh 'npm run coverage || echo "No coverage script; skipping."'
+        script {
+          if (fileExists('coverage/lcov.info')) {
+            archiveArtifacts artifacts: 'coverage/**', onlyIfSuccessful: false
+          }
+        }
       }
     }
 
     stage('NPM Audit (Security Scan)') {
       steps {
         sh '''
+          set +e
+          npm audit --json > audit.json
           npm audit || true
-          npm audit > npm-audit.txt || true
         '''
       }
       post {
         always {
-          retry(2) {
-            emailext(
-              to: 's221133429@gmail.com',
-              from: 's221133429@gmail.com',
-              subject: "[DevSecOps] NPM Audit — ${currentBuild.currentResult} (${env.JOB_NAME} #${env.BUILD_NUMBER})",
-              body: "test test — NPM Audit finished. See attachment for details.",
-              attachmentsPattern: 'npm-audit.txt'
-            )
-          }
+          emailext(
+            to: "${env.EMAIL_TO}",
+            subject: "[Security Scan] ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${currentBuild.currentResult}",
+            body: """Build: ${env.BUILD_URL}
+Stage: NPM Audit (Security Scan)
+Status: ${currentBuild.currentResult}
+
+- audit.json attached if present
+- Full console log attached.""",
+            attachmentsPattern: 'audit.json',
+            attachLog: true,
+            compressLog: true
+          )
         }
       }
     }
