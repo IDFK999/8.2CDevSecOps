@@ -17,7 +17,7 @@ mongod &
 git clone https://github.com/snyk-labs/nodejs-goof
 npm install
 npm start
-```
+
 This will run Goof locally, using a local mongo on the default port and listening on port 3001 (http://localhost:3001)
 
 Note: You *have* to use an old version of MongoDB version due to some of these old libraries' database server APIs. MongoDB 3 is known to work ok.
